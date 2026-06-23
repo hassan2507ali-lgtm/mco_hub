@@ -1,23 +1,37 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient'; // <-- Import Supabase
 import CheckoutView from './CheckoutView';
 import SuccessView from './SuccessView';
 import { ArrowLeft, Star, Clock, Utensils, Plus, Minus, ChevronRight } from 'lucide-react';
 
-export default function MenuView({ cafe, onBack }) {
-  const menus = [
-    { id: 101, name: "Kopi Susu Gula Aren", desc: "Espresso 100% Arabica, susu segar, dan gula aren murni", price: 18000, category: "Minuman", color: "bg-amber-100 text-amber-700" },
-    { id: 102, name: "Americano Dingin", desc: "Kopi hitam dingin segar tanpa gula dari biji kopi pilihan", price: 15000, category: "Minuman", color: "bg-stone-200 text-stone-700" },
-    { id: 103, name: "Roti Bakar Coklat Keju", desc: "Roti bakar tebal dengan topping coklat premium dan keju melimpah", price: 20000, category: "Snack", color: "bg-orange-100 text-orange-700" },
-    { id: 104, name: "Nasi Goreng Spesial", desc: "Nasi goreng bumbu rempah dengan telur mata sapi dan ayam", price: 25000, category: "Makanan", color: "bg-red-100 text-red-700" },
-    { id: 105, name: "Air Mineral Premium", desc: "Air mineral botol 600ml dingin", price: 5000, category: "Minuman", color: "bg-blue-100 text-blue-700" },
-  ];
-
+export default function MenuView({ cafe, onBack, nip }) {
+  const [menus, setMenus] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
   const [cart, setCart] = useState([]);
   const [activeCategory, setActiveCategory] = useState("Semua");
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isOrderSuccess, setIsOrderSuccess] = useState(false);
 
-  const categories = ["Semua", "Makanan", "Minuman", "Snack"];
+  // Ambil data menu khusus untuk cafe yang dipilih dari database
+  useEffect(() => {
+    const fetchMenus = async () => {
+      const { data, error } = await supabase
+        .from('menus')
+        .select('*')
+        .eq('cafe_id', cafe.id)
+        .eq('is_active', true); // Hanya tampilkan yang aktif / belum sold out
+      
+      if (data) {
+        setMenus(data);
+      }
+      setIsLoading(false);
+    };
+    fetchMenus();
+  }, [cafe.id]);
+
+  // Ekstrak kategori unik dari database, lalu tambahkan "Semua" di awal
+  const dynamicCategories = ["Semua", ...new Set(menus.map(m => m.category).filter(Boolean))];
   const filteredMenus = activeCategory === "Semua" ? menus : menus.filter(menu => menu.category === activeCategory);
 
   const formatRupiah = (angka) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(angka);
@@ -37,19 +51,24 @@ export default function MenuView({ cafe, onBack }) {
   const totalCartPrice = cart.reduce((t, i) => t + (i.price * i.qty), 0);
   const totalCartItems = cart.reduce((t, i) => t + i.qty, 0);
 
+  // Fungsi dinamis untuk warna ikon makanan
+  const getMenuColor = (category) => {
+    if (category === 'Minuman') return "bg-blue-100 text-blue-700";
+    if (category === 'Snack') return "bg-orange-100 text-orange-700";
+    if (category === 'Makanan') return "bg-red-100 text-red-700";
+    return "bg-slate-100 text-slate-700";
+  };
+
   const getCafeImageProps = (name) => {
     if (name.includes("Coffee")) return { gradient: "from-amber-600 via-amber-700 to-stone-800" };
     if (name.includes("Roti")) return { gradient: "from-orange-400 via-orange-500 to-amber-600" };
     if (name.includes("Mie")) return { gradient: "from-red-500 via-red-600 to-orange-700" };
-    if (name.includes("Nusantara")) return { gradient: "from-green-600 via-green-700 to-emerald-800" };
-    if (name.includes("Salad")) return { gradient: "from-emerald-400 via-emerald-500 to-teal-600" };
     return { gradient: "from-blue-700 via-blue-800 to-blue-900" }; 
   };
   const cafeImage = getCafeImageProps(cafe.name);
 
   if (isOrderSuccess) return <SuccessView onBackToHome={onBack} />;
-  
-  if (isCheckoutOpen) return <CheckoutView cart={cart} cafe={cafe} onBack={() => setIsCheckoutOpen(false)} onConfirm={() => setIsOrderSuccess(true)} />;
+  if (isCheckoutOpen) return <CheckoutView cart={cart} cafe={cafe} nip={nip} onBack={() => setIsCheckoutOpen(false)} onConfirm={() => setIsOrderSuccess(true)} />;
 
   return (
     <div className="min-h-screen bg-white font-sans pb-28 antialiased relative">
@@ -71,45 +90,52 @@ export default function MenuView({ cafe, onBack }) {
             <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" /> {cafe.rating}
           </span>
           <span className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 bg-slate-100 px-2.5 py-1.5 rounded-full border border-slate-200">
-            <Clock className="w-3.5 h-3.5 text-slate-500" /> {cafe.time}
+            <Clock className="w-3.5 h-3.5 text-slate-500" /> {cafe.time_est}
           </span>
         </div>
 
         <div className="px-5 mb-6">
           <div className="flex gap-2.5 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden">
-            {categories.map((c) => (
+            {dynamicCategories.map((c) => (
               <button key={c} onClick={() => setActiveCategory(c)} className={`whitespace-nowrap px-4 py-2 rounded-full text-[13px] font-extrabold transition-all border ${activeCategory === c ? "bg-blue-900 text-white border-blue-900 shadow-md" : "bg-white text-slate-500 border-slate-200"}`}>{c}</button>
             ))}
           </div>
         </div>
         
         <div className="flex flex-col gap-6 px-5">
-          {filteredMenus.map((menu) => {
-            const qty = cart.find(i => i.id === menu.id)?.qty || 0;
-            return (
-              <div key={menu.id} className="flex justify-between items-start gap-4 border-b border-slate-100 pb-5 last:border-0">
-                <div className="flex-1 pr-2">
-                  <h3 className="font-bold text-slate-800 text-[15px]">{menu.name}</h3>
-                  <p className="text-[12px] font-medium text-slate-500 mt-1.5 mb-2.5">{menu.desc}</p>
-                  <span className="font-extrabold text-slate-800">{formatRupiah(menu.price)}</span>
-                </div>
-                <div className="flex flex-col items-center gap-3 w-24">
-                  <div className={`w-24 h-24 ${menu.color} rounded-2xl flex items-center justify-center shadow-inner`}>
-                    <Utensils className="w-8 h-8 opacity-40" />
+          {isLoading ? (
+            <p className="text-center text-sm font-bold text-slate-400 py-10 animate-pulse">Memuat menu...</p>
+          ) : filteredMenus.length === 0 ? (
+            <p className="text-center text-sm font-bold text-slate-400 py-10">Belum ada menu di kategori ini.</p>
+          ) : (
+            filteredMenus.map((menu) => {
+              const qty = cart.find(i => i.id === menu.id)?.qty || 0;
+              const colorClass = getMenuColor(menu.category);
+              return (
+                <div key={menu.id} className="flex justify-between items-start gap-4 border-b border-slate-100 pb-5 last:border-0">
+                  <div className="flex-1 pr-2">
+                    <h3 className="font-bold text-slate-800 text-[15px]">{menu.name}</h3>
+                    <p className="text-[12px] font-medium text-slate-500 mt-1.5 mb-2.5">{menu.description}</p>
+                    <span className="font-extrabold text-slate-800">{formatRupiah(menu.price)}</span>
                   </div>
-                  {qty === 0 ? (
-                    <button onClick={() => handleAdd(menu)} className="w-full bg-white border border-blue-900 text-blue-900 text-xs font-extrabold py-1.5 rounded-full hover:bg-blue-50">Tambah</button>
-                  ) : (
-                    <div className="w-full flex items-center justify-between bg-white border border-blue-900 rounded-full px-1 py-0.5">
-                      <button onClick={() => handleRemove(menu.id)} className="w-6 h-6 flex items-center justify-center text-blue-900"><Minus className="w-3.5 h-3.5" /></button>
-                      <span className="text-xs font-extrabold text-blue-900">{qty}</span>
-                      <button onClick={() => handleAdd(menu)} className="w-6 h-6 flex items-center justify-center bg-blue-900 text-white rounded-full"><Plus className="w-3.5 h-3.5" /></button>
+                  <div className="flex flex-col items-center gap-3 w-24">
+                    <div className={`w-24 h-24 ${colorClass} rounded-2xl flex items-center justify-center shadow-inner`}>
+                      <Utensils className="w-8 h-8 opacity-40" />
                     </div>
-                  )}
+                    {qty === 0 ? (
+                      <button onClick={() => handleAdd(menu)} className="w-full bg-white border border-blue-900 text-blue-900 text-xs font-extrabold py-1.5 rounded-full hover:bg-blue-50">Tambah</button>
+                    ) : (
+                      <div className="w-full flex items-center justify-between bg-white border border-blue-900 rounded-full px-1 py-0.5">
+                        <button onClick={() => handleRemove(menu.id)} className="w-6 h-6 flex items-center justify-center text-blue-900"><Minus className="w-3.5 h-3.5" /></button>
+                        <span className="text-xs font-extrabold text-blue-900">{qty}</span>
+                        <button onClick={() => handleAdd(menu)} className="w-6 h-6 flex items-center justify-center bg-blue-900 text-white rounded-full"><Plus className="w-3.5 h-3.5" /></button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
 
