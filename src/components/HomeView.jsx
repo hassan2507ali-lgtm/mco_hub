@@ -32,7 +32,8 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
   }, [cafes.length]);
 
   if (isHistoryOpen) {
-    return <HistoryView onBack={() => setIsHistoryOpen(false)} />;
+    // KITA TAMBAHKAN customerNip={nip} DI SINI 👇
+    return <HistoryView onBack={() => setIsHistoryOpen(false)} customerNip={nip} />;
   }
 
   const quickActions = [
