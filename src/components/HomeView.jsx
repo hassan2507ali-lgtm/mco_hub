@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient'; // <-- Import Supabase
 import HistoryView from './HistoryView';
 import { 
   MapPin, History, LogOut, Search, Utensils, 
-  Bike, ShoppingBag, Users, CreditCard, Store, Star, Clock 
+  Bike, ShoppingBag, Users, CreditCard, Store, Star, Clock, Gift
 } from 'lucide-react';
 
 export default function HomeView({ nip, onLogout, onSelectCafe }) {
@@ -11,6 +11,7 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
   const [isLoading, setIsLoading] = useState(true);
   const [activeBanner, setActiveBanner] = useState(0);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [userPoints, setUserPoints] = useState(0); // State menampung poin loyalitas
 
   // Ambil data toko dari database Supabase
   useEffect(() => {
@@ -22,6 +23,25 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
     fetchCafes();
   }, []);
 
+  // Hitung poin secara real berdasarkan riwayat pesanan COMPLETED milik NIP ini
+  useEffect(() => {
+    const fetchPoints = async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('customer_nip', nip)
+        .eq('status', 'COMPLETED');
+      
+      if (data) {
+        // Setiap 1 pesanan selesai bernilai 2 poin + bonus 10 poin untuk testing awal
+        setUserPoints((data.length * 2) + 10);
+      } else {
+        setUserPoints(10); // Nilai default 10 poin agar bisa langsung ditest claim
+      }
+    };
+    if (nip) fetchPoints();
+  }, [nip]);
+
   // Animasi Banner
   useEffect(() => {
     if (cafes.length === 0) return;
@@ -32,7 +52,6 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
   }, [cafes.length]);
 
   if (isHistoryOpen) {
-    // KITA TAMBAHKAN customerNip={nip} DI SINI 👇
     return <HistoryView onBack={() => setIsHistoryOpen(false)} customerNip={nip} />;
   }
 
@@ -59,7 +78,6 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
         
         <div className="absolute top-6 left-5 right-5 flex justify-between items-start z-20">
           <div className="bg-white/20 backdrop-blur-md text-white px-4 py-2 rounded-full flex items-center gap-2 text-sm font-semibold border border-white/20 shadow-sm">
-            
             <span className="tracking-wide">NIP: {nip}</span>
           </div>
           <div className="flex gap-2.5">
@@ -104,7 +122,55 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
         </div>
       </div>
 
-      {/* 3. QUICK ACTIONS */}
+   {/* 3 FITUR BARU: MCO LOYALTY REWARDS */}
+   <div className="px-5 mt-6">
+        <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-4 text-white shadow-md shadow-orange-500/10">
+          <div className="flex justify-between items-center mb-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-orange-100">MCO Loyalty Points</p>
+              <h3 className="text-2xl font-black mt-0.5">{userPoints} POIN</h3>
+            </div>
+            <div className="bg-white/20 px-3 py-1 rounded-xl text-[10px] font-bold backdrop-blur-sm border border-white/10 flex items-center gap-1">
+              <Gift className="w-3 h-3" /> Cafe Reward
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-xl p-3 flex justify-between items-center text-slate-800 shadow-sm mt-2">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 bg-orange-50 rounded-lg flex items-center justify-center text-lg flex-shrink-0">☕</div>
+              <div className="min-w-0">
+                <p className="font-extrabold text-xs text-slate-800 truncate">Gratis 1 Kopi Americano</p>
+                <p className="text-[11px] font-bold text-orange-600 mt-0.5">Tukar 10 Poin</p>
+              </div>
+            </div>
+            <button 
+              disabled={userPoints < 10 || cafes.length === 0}
+              onClick={() => {
+                if (cafes.length > 0) {
+                  // Menyisipkan tanda bonus claim ke dalam objek tenant/cafe yang dituju
+                  onSelectCafe({
+                    ...cafes[0], // Mengarahkan ke tenant pertama sebagai penyedia klaim kopi
+                    redeemItem: {
+                      name: "Kopi Americano",
+                      price: 0,
+                      isRedeem: true
+                    }
+                  });
+                }
+              }}
+              className={`px-3.5 py-2 rounded-lg text-xs font-black tracking-wide transition-all flex-shrink-0 ${
+                userPoints >= 10 
+                  ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm active:scale-95 cursor-pointer' 
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              Claim
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. QUICK ACTIONS */}
       <div className="px-5 mt-8 grid grid-cols-4 gap-4 text-center">
         {quickActions.map((action, idx) => (
           <div key={idx} className="flex flex-col items-center gap-2.5 cursor-pointer active:scale-95 transition-transform">
@@ -114,8 +180,9 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
         ))}
       </div>
 
+   
       {/* 4. DAFTAR CAFE DARI DATABASE */}
-      <div className="px-5 mt-10">
+      <div className="px-5 mt-8">
         <div className="flex justify-between items-end mb-5">
           <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Rekomendasi Tenant</h2>
           <span className="text-sm font-bold text-blue-700 cursor-pointer hover:text-blue-800 transition-colors">Lihat Semua</span>
