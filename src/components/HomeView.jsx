@@ -58,7 +58,7 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
         
         <div className="absolute top-6 left-5 right-5 flex justify-between items-start z-20">
           <div className="bg-white/20 backdrop-blur-md text-white px-4 py-2 rounded-full flex items-center gap-2 text-sm font-semibold border border-white/20 shadow-sm">
-            <MapPin className="w-4 h-4 text-white" />
+            
             <span className="tracking-wide">NIP: {nip}</span>
           </div>
           <div className="flex gap-2.5">
