@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
+import HistoryView from './HistoryView'; // <-- Import halaman History
 
 export default function HomeView({ nip, onLogout, onSelectCafe }) {
-  // Data 5 Tenant (Bersih tanpa promo)
   const cafes = [
     { id: 1, name: "MCO Signature Coffee", desc: "Kopi, Teh & Minuman Dingin", rating: "4.9", time: "5-10 mnt" },
     { id: 2, name: "Roti Gembong Prima", desc: "Roti Bakar & Pastry", rating: "4.8", time: "10-15 mnt" },
@@ -11,6 +11,7 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
   ];
 
   const [activeBanner, setActiveBanner] = useState(0);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false); // <-- State untuk buka History
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -18,6 +19,11 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
     }, 2500); 
     return () => clearInterval(interval);
   }, [cafes.length]);
+
+  // <-- LOGIKA NAVIGASI KE HISTORY -->
+  if (isHistoryOpen) {
+    return <HistoryView onBack={() => setIsHistoryOpen(false)} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 overflow-y-auto antialiased">
@@ -28,21 +34,24 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
         {/* Header Action */}
         <div className="absolute top-6 left-5 right-5 flex justify-between items-start z-20">
           <div className="bg-white/20 backdrop-blur-md text-white px-4 py-2 rounded-full flex items-center gap-2 text-sm font-semibold border border-white/20 shadow-sm">
-        
+            <span>📍</span>
             <span className="tracking-wide">NIP: {nip}</span>
           </div>
 
-          {/* Kanan: Tombol History & Logout (Menggunakan SVG Premium) */}
+          {/* Kanan: Tombol History & Logout */}
           <div className="flex gap-2.5">
             
-            {/* Tombol History (Ikon Jam) */}
-            <button className="w-10 h-10 bg-white text-slate-600 flex items-center justify-center rounded-full shadow-lg hover:bg-slate-50 hover:text-blue-700 active:scale-90 transition-all">
+            {/* Tombol History (Telah dihubungkan ke onClick) */}
+            <button 
+              onClick={() => setIsHistoryOpen(true)} 
+              className="w-10 h-10 bg-white text-slate-600 flex items-center justify-center rounded-full shadow-lg hover:bg-slate-50 hover:text-blue-700 active:scale-90 transition-all"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
               </svg>
             </button>
 
-            {/* Tombol Logout (Ikon Keluar) */}
+            {/* Tombol Logout */}
             <button onClick={onLogout} className="w-10 h-10 bg-white text-red-500 flex items-center justify-center rounded-full shadow-lg hover:bg-red-50 hover:text-red-600 active:scale-90 transition-all">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
