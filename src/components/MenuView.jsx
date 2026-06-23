@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import CheckoutView from './CheckoutView';
 import SuccessView from './SuccessView';
+import { ArrowLeft, Star, Clock, Utensils, Plus, Minus, ChevronRight } from 'lucide-react';
 
 export default function MenuView({ cafe, onBack }) {
   const menus = [
@@ -17,107 +18,74 @@ export default function MenuView({ cafe, onBack }) {
   const [isOrderSuccess, setIsOrderSuccess] = useState(false);
 
   const categories = ["Semua", "Makanan", "Minuman", "Snack"];
+  const filteredMenus = activeCategory === "Semua" ? menus : menus.filter(menu => menu.category === activeCategory);
 
-  const filteredMenus = activeCategory === "Semua" 
-    ? menus 
-    : menus.filter(menu => menu.category === activeCategory);
+  const formatRupiah = (angka) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(angka);
 
-  const formatRupiah = (angka) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(angka);
-  };
+  const handleAdd = (menu) => setCart(p => {
+    const e = p.find(i => i.id === menu.id);
+    if (e) return p.map(i => i.id === menu.id ? { ...i, qty: i.qty + 1 } : i);
+    return [...p, { ...menu, qty: 1 }];
+  });
 
-  const handleAdd = (menu) => {
-    setCart((prev) => {
-      const existing = prev.find(item => item.id === menu.id);
-      if (existing) return prev.map(item => item.id === menu.id ? { ...item, qty: item.qty + 1 } : item);
-      return [...prev, { ...menu, qty: 1 }];
-    });
-  };
+  const handleRemove = (id) => setCart(p => {
+    const e = p.find(i => i.id === id);
+    if (e.qty === 1) return p.filter(i => i.id !== id);
+    return p.map(i => i.id === id ? { ...i, qty: i.qty - 1 } : i);
+  });
 
-  const handleRemove = (menuId) => {
-    setCart((prev) => {
-      const existing = prev.find(item => item.id === menuId);
-      if (existing.qty === 1) return prev.filter(item => item.id !== menuId);
-      return prev.map(item => item.id === menuId ? { ...item, qty: item.qty - 1 } : item);
-    });
-  };
-
-  const totalCartPrice = cart.reduce((total, item) => total + (item.price * item.qty), 0);
-  const totalCartItems = cart.reduce((total, item) => total + item.qty, 0);
+  const totalCartPrice = cart.reduce((t, i) => t + (i.price * i.qty), 0);
+  const totalCartItems = cart.reduce((t, i) => t + i.qty, 0);
 
   const getCafeImageProps = (name) => {
-    if (name.includes("Coffee")) return { gradient: "from-amber-600 via-amber-700 to-stone-800", icon: "☕" };
-    if (name.includes("Roti")) return { gradient: "from-orange-400 via-orange-500 to-amber-600", icon: "🍞" };
-    if (name.includes("Mie")) return { gradient: "from-red-500 via-red-600 to-orange-700", icon: "🍜" };
-    if (name.includes("Nusantara")) return { gradient: "from-green-600 via-green-700 to-emerald-800", icon: "🇮🇩" };
-    if (name.includes("Salad")) return { gradient: "from-emerald-400 via-emerald-500 to-teal-600", icon: "🥗" };
-    return { gradient: "from-blue-700 via-blue-800 to-blue-900", icon: "🏪" }; 
+    if (name.includes("Coffee")) return { gradient: "from-amber-600 via-amber-700 to-stone-800" };
+    if (name.includes("Roti")) return { gradient: "from-orange-400 via-orange-500 to-amber-600" };
+    if (name.includes("Mie")) return { gradient: "from-red-500 via-red-600 to-orange-700" };
+    if (name.includes("Nusantara")) return { gradient: "from-green-600 via-green-700 to-emerald-800" };
+    if (name.includes("Salad")) return { gradient: "from-emerald-400 via-emerald-500 to-teal-600" };
+    return { gradient: "from-blue-700 via-blue-800 to-blue-900" }; 
   };
   const cafeImage = getCafeImageProps(cafe.name);
 
-  // --- LOGIKA NAVIGASI YANG DIPERBAIKI ---
-  if (isOrderSuccess) {
-    // onBack di sini akan menutup MenuView dan kembali ke HomeView
-    return <SuccessView onBackToHome={onBack} />;
-  }
-
-  if (isCheckoutOpen) {
-    return (
-      <CheckoutView 
-        cart={cart} 
-        cafe={cafe} 
-        onBack={() => setIsCheckoutOpen(false)} 
-        onConfirm={() => setIsOrderSuccess(true)} 
-      />
-    );
-  }
+  if (isOrderSuccess) return <SuccessView onBackToHome={onBack} />;
+  
+  if (isCheckoutOpen) return <CheckoutView cart={cart} cafe={cafe} onBack={() => setIsCheckoutOpen(false)} onConfirm={() => setIsOrderSuccess(true)} />;
 
   return (
     <div className="min-h-screen bg-white font-sans pb-28 antialiased relative">
-      {/* ... (seluruh sisa UI kamu tetap sama seperti sebelumnya) ... */}
       <div className={`relative w-full h-60 bg-gradient-to-br ${cafeImage.gradient} shadow-sm overflow-hidden rounded-b-[2.5rem]`}>
-        <div className="absolute top-6 left-5 right-5 flex justify-between items-start z-20">
+        <div className="absolute top-6 left-5 z-20">
           <button onClick={onBack} className="w-10 h-10 bg-white/20 backdrop-blur-md text-white flex items-center justify-center rounded-full hover:bg-white/30 active:scale-90 transition-all border border-white/20">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+            <ArrowLeft className="w-5 h-5" />
           </button>
         </div>
         <div className="absolute inset-x-6 bottom-8 z-10 text-white">
           <span className="text-yellow-400 text-xs font-bold tracking-widest uppercase mb-1 block">Tenant Resmi MCO</span>
           <h1 className="text-4xl font-extrabold text-white leading-tight tracking-tight drop-shadow-sm">{cafe.name}</h1>
         </div>
-        <div className="absolute -bottom-10 -right-10 text-[120px] opacity-20 transform -rotate-12 transition-transform duration-700">{cafeImage.icon}</div>
       </div>
 
       <div className="mt-5">
         <div className="flex items-center gap-3 px-5 mb-5 pb-4 border-b border-slate-100">
           <span className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 bg-slate-100 px-2.5 py-1.5 rounded-full border border-slate-200">
-            <span className="text-yellow-500">⭐</span> {cafe.rating}
+            <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" /> {cafe.rating}
           </span>
           <span className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 bg-slate-100 px-2.5 py-1.5 rounded-full border border-slate-200">
-            <span>⏱️</span> {cafe.time}
+            <Clock className="w-3.5 h-3.5 text-slate-500" /> {cafe.time}
           </span>
         </div>
 
         <div className="px-5 mb-6">
           <div className="flex gap-2.5 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden">
-            {categories.map((category) => (
-              <button
-                key={category}
-                onClick={() => setActiveCategory(category)}
-                className={`whitespace-nowrap px-4 py-2 rounded-full text-[13px] font-extrabold transition-all border ${
-                  activeCategory === category ? "bg-blue-900 text-white border-blue-900 shadow-md" : "bg-white text-slate-500 border-slate-200"
-                }`}
-              >
-                {category}
-              </button>
+            {categories.map((c) => (
+              <button key={c} onClick={() => setActiveCategory(c)} className={`whitespace-nowrap px-4 py-2 rounded-full text-[13px] font-extrabold transition-all border ${activeCategory === c ? "bg-blue-900 text-white border-blue-900 shadow-md" : "bg-white text-slate-500 border-slate-200"}`}>{c}</button>
             ))}
           </div>
         </div>
         
         <div className="flex flex-col gap-6 px-5">
           {filteredMenus.map((menu) => {
-            const cartItem = cart.find(item => item.id === menu.id);
-            const qty = cartItem ? cartItem.qty : 0;
+            const qty = cart.find(i => i.id === menu.id)?.qty || 0;
             return (
               <div key={menu.id} className="flex justify-between items-start gap-4 border-b border-slate-100 pb-5 last:border-0">
                 <div className="flex-1 pr-2">
@@ -127,15 +95,15 @@ export default function MenuView({ cafe, onBack }) {
                 </div>
                 <div className="flex flex-col items-center gap-3 w-24">
                   <div className={`w-24 h-24 ${menu.color} rounded-2xl flex items-center justify-center shadow-inner`}>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 opacity-50"><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
+                    <Utensils className="w-8 h-8 opacity-40" />
                   </div>
                   {qty === 0 ? (
                     <button onClick={() => handleAdd(menu)} className="w-full bg-white border border-blue-900 text-blue-900 text-xs font-extrabold py-1.5 rounded-full hover:bg-blue-50">Tambah</button>
                   ) : (
                     <div className="w-full flex items-center justify-between bg-white border border-blue-900 rounded-full px-1 py-0.5">
-                      <button onClick={() => handleRemove(menu.id)} className="w-6 h-6 flex items-center justify-center text-blue-900"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" /></svg></button>
+                      <button onClick={() => handleRemove(menu.id)} className="w-6 h-6 flex items-center justify-center text-blue-900"><Minus className="w-3.5 h-3.5" /></button>
                       <span className="text-xs font-extrabold text-blue-900">{qty}</span>
-                      <button onClick={() => handleAdd(menu)} className="w-6 h-6 flex items-center justify-center bg-blue-900 text-white rounded-full"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></button>
+                      <button onClick={() => handleAdd(menu)} className="w-6 h-6 flex items-center justify-center bg-blue-900 text-white rounded-full"><Plus className="w-3.5 h-3.5" /></button>
                     </div>
                   )}
                 </div>
@@ -153,7 +121,7 @@ export default function MenuView({ cafe, onBack }) {
               <span className="font-extrabold text-sm">{formatRupiah(totalCartPrice)}</span>
             </div>
             <div className="flex items-center gap-2 bg-yellow-400 text-blue-900 px-5 py-2.5 rounded-xl font-extrabold text-[13px]">
-              Checkout
+              Checkout <ChevronRight className="w-4 h-4" />
             </div>
           </div>
         </div>
