@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient'; // <-- Import Supabase
+import { supabase } from '../supabaseClient';
 import CheckoutView from './CheckoutView';
 import SuccessView from './SuccessView';
-import { ArrowLeft, Star, Clock, Utensils, Plus, Minus, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Star, Clock, Utensils, Plus, Minus, ChevronRight, Gift } from 'lucide-react';
 
 export default function MenuView({ cafe, onBack, nip }) {
   const [menus, setMenus] = useState([]);
@@ -13,14 +13,27 @@ export default function MenuView({ cafe, onBack, nip }) {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isOrderSuccess, setIsOrderSuccess] = useState(false);
 
-  // Ambil data menu khusus untuk cafe yang dipilih dari database
+  // PENANGKAP VOUCHER: Masukkan barang reward ke keranjang secara otomatis
+  useEffect(() => {
+    if (cafe && cafe.redeemItem) {
+      setCart(prev => {
+        // Cek supaya tidak dobel kalau layar re-render
+        const exists = prev.find(i => i.id === cafe.redeemItem.id && i.isRedeem);
+        if (!exists) {
+          return [...prev, cafe.redeemItem];
+        }
+        return prev;
+      });
+    }
+  }, [cafe]);
+
   useEffect(() => {
     const fetchMenus = async () => {
       const { data, error } = await supabase
         .from('menus')
         .select('*')
         .eq('cafe_id', cafe.id)
-        .eq('is_active', true); // Hanya tampilkan yang aktif / belum sold out
+        .eq('is_active', true); 
       
       if (data) {
         setMenus(data);
@@ -30,28 +43,28 @@ export default function MenuView({ cafe, onBack, nip }) {
     fetchMenus();
   }, [cafe.id]);
 
-  // Ekstrak kategori unik dari database, lalu tambahkan "Semua" di awal
   const dynamicCategories = ["Semua", ...new Set(menus.map(m => m.category).filter(Boolean))];
   const filteredMenus = activeCategory === "Semua" ? menus : menus.filter(menu => menu.category === activeCategory);
 
   const formatRupiah = (angka) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(angka);
 
+  // LOGIKA KERANJANG BARU: Pisahkan barang berbayar (!isRedeem) dengan barang gratisan
   const handleAdd = (menu) => setCart(p => {
-    const e = p.find(i => i.id === menu.id);
-    if (e) return p.map(i => i.id === menu.id ? { ...i, qty: i.qty + 1 } : i);
-    return [...p, { ...menu, qty: 1 }];
+    const e = p.find(i => i.id === menu.id && !i.isRedeem);
+    if (e) return p.map(i => (i.id === menu.id && !i.isRedeem) ? { ...i, qty: i.qty + 1 } : i);
+    return [...p, { ...menu, qty: 1, isRedeem: false }];
   });
 
   const handleRemove = (id) => setCart(p => {
-    const e = p.find(i => i.id === id);
-    if (e.qty === 1) return p.filter(i => i.id !== id);
-    return p.map(i => i.id === id ? { ...i, qty: i.qty - 1 } : i);
+    const e = p.find(i => i.id === id && !i.isRedeem);
+    if (!e) return p;
+    if (e.qty === 1) return p.filter(i => !(i.id === id && !i.isRedeem));
+    return p.map(i => (i.id === id && !i.isRedeem) ? { ...i, qty: i.qty - 1 } : i);
   });
 
   const totalCartPrice = cart.reduce((t, i) => t + (i.price * i.qty), 0);
   const totalCartItems = cart.reduce((t, i) => t + i.qty, 0);
 
-  // Fungsi dinamis untuk warna ikon makanan
   const getMenuColor = (category) => {
     if (category === 'Minuman') return "bg-blue-100 text-blue-700";
     if (category === 'Snack') return "bg-orange-100 text-orange-700";
@@ -84,6 +97,19 @@ export default function MenuView({ cafe, onBack, nip }) {
         </div>
       </div>
 
+      {/* Banner Pemberitahuan Voucher Berhasil Diklaim */}
+      {cafe.redeemItem && (
+        <div className="px-5 mt-4 -mb-1 animate-fade-in-up">
+          <div className="bg-orange-50 border border-orange-200 text-orange-800 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm">
+            <div className="bg-orange-100 p-2 rounded-lg text-orange-600"><Gift className="w-5 h-5" /></div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-orange-500">Reward Aktif</p>
+              <p className="text-sm font-extrabold leading-tight">1x {cafe.redeemItem.name} gratis ditambahkan ke pesananmu!</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mt-5">
         <div className="flex items-center gap-3 px-5 mb-5 pb-4 border-b border-slate-100">
           <span className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 bg-slate-100 px-2.5 py-1.5 rounded-full border border-slate-200">
@@ -109,7 +135,8 @@ export default function MenuView({ cafe, onBack, nip }) {
             <p className="text-center text-sm font-bold text-slate-400 py-10">Belum ada menu di kategori ini.</p>
           ) : (
             filteredMenus.map((menu) => {
-              const qty = cart.find(i => i.id === menu.id)?.qty || 0;
+              // Ambil QTY untuk item berbayar saja
+              const qty = cart.find(i => i.id === menu.id && !i.isRedeem)?.qty || 0;
               const colorClass = getMenuColor(menu.category);
               return (
                 <div key={menu.id} className="flex justify-between items-start gap-4 border-b border-slate-100 pb-5 last:border-0">
@@ -141,7 +168,7 @@ export default function MenuView({ cafe, onBack, nip }) {
 
       {cart.length > 0 && (
         <div onClick={() => setIsCheckoutOpen(true)} className="fixed bottom-6 left-0 right-0 px-5 max-w-md mx-auto z-30">
-          <div className="bg-blue-900 text-white p-3 rounded-2xl shadow-2xl flex justify-between items-center cursor-pointer">
+          <div className="bg-blue-900 text-white p-3 rounded-2xl shadow-2xl flex justify-between items-center cursor-pointer hover:bg-blue-800 active:scale-[0.98] transition-all">
             <div className="flex flex-col px-2">
               <span className="text-[11px] text-blue-200 font-medium">{totalCartItems} item dipilih</span>
               <span className="font-extrabold text-sm">{formatRupiah(totalCartPrice)}</span>
