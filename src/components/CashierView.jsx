@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import {
   ArrowLeft, Monitor, ClipboardList, Boxes, Clock, ChefHat,
@@ -161,7 +161,6 @@ const StockTab = ({ cafeId }) => {
 
   useEffect(() => { fetchStock(); }, [fetchStock]);
 
-  // Toggle ketersediaan menu (Active/Sold Out)
   const toggleActive = async (id, nextStatus) => {
     setBusyId(id);
     const { error } = await supabase.from('menus').update({ is_active: nextStatus }).eq('id', id);
@@ -171,7 +170,6 @@ const StockTab = ({ cafeId }) => {
     setBusyId(null);
   };
 
-  // Toggle status voucher menu (ON/OFF)
   const toggleVoucher = async (id, nextVoucherStatus) => {
     setBusyVoucherId(id);
     const { error } = await supabase.from('menus').update({ is_voucher: nextVoucherStatus }).eq('id', id);
@@ -181,7 +179,6 @@ const StockTab = ({ cafeId }) => {
     setBusyVoucherId(null);
   };
 
-  // Update harga poin saat kasir selesai mengetik
   const updatePointCost = async (id, newCost) => {
     const cost = parseInt(newCost) || 0;
     const { error } = await supabase.from('menus').update({ point_cost: cost }).eq('id', id);
@@ -269,7 +266,6 @@ const StockTab = ({ cafeId }) => {
             
             <div className="flex items-center gap-4 sm:gap-6 self-end sm:self-auto">
               
-              {/* VOUCHER CONTROLS */}
               <div className="flex flex-col items-center gap-1 border-r border-slate-200 pr-4 sm:pr-6">
                 <div className="flex items-center gap-2 h-7">
                   <Switch 
@@ -294,7 +290,6 @@ const StockTab = ({ cafeId }) => {
                 </span>
               </div>
 
-              {/* ACTIVE CONTROLS */}
               <div className="flex flex-col items-center gap-1 min-w-[60px]">
                 <div className="h-7 flex items-center">
                   <Switch 
@@ -333,12 +328,10 @@ const ReportTab = ({ cafeId }) => {
       if (data) {
         setReport(data);
 
-        // 1. Hitung Orders Today
         const today = new Date().toISOString().split('T')[0];
         const todayOrders = data.filter(o => o.created_at.startsWith(today));
         setOrdersToday(todayOrders.length);
 
-        // 2. Hitung Best Seller
         const itemCounts = {};
         data.forEach(order => {
           order.order_items?.forEach(item => {
@@ -364,10 +357,7 @@ const ReportTab = ({ cafeId }) => {
 
   return (
     <div className="p-6">
-      {/* 3 KOTAK ATAS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        
-        {/* Card 1: Total Revenue */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
           <div className="flex justify-between items-start">
             <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
@@ -382,7 +372,6 @@ const ReportTab = ({ cafeId }) => {
           <p className="text-xs text-slate-400 mt-2">Akumulasi semua pesanan paid/done</p>
         </div>
 
-        {/* Card 2: Orders Today */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
           <div className="flex justify-between items-start">
             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
@@ -397,7 +386,6 @@ const ReportTab = ({ cafeId }) => {
           <p className="text-xs text-slate-400 mt-2">Pesanan diterima hari ini</p>
         </div>
 
-        {/* Card 3: Best Seller */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
           <div className="flex justify-between items-start">
             <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-600">
@@ -411,10 +399,8 @@ const ReportTab = ({ cafeId }) => {
           <h3 className="text-3xl font-extrabold text-slate-900 mt-1 truncate">{bestSeller}</h3>
           <p className="text-xs text-slate-400 mt-2">Menu paling laris</p>
         </div>
-
       </div>
 
-      {/* KOTAK CHART BAWAH */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mt-5">
         <div className="flex justify-between items-start mb-8">
           <div>
@@ -426,7 +412,6 @@ const ReportTab = ({ cafeId }) => {
           </span>
         </div>
         
-        {/* Area Kosong untuk Chart Data Visual */}
         <div className="h-56 flex flex-col justify-between py-2 border-y border-dashed border-slate-100 relative">
            <div className="w-full border-t border-dashed border-slate-200 opacity-60"></div>
            <div className="w-full border-t border-dashed border-slate-200 opacity-60"></div>
@@ -514,6 +499,19 @@ export default function CashierView({ onLogout, cafeId }) {
   const [soundOn, setSoundOn] = useState(true);
   const [_tick, setTick] = useState(0);
 
+  // Gunakan Ref agar status soundOn selalu up-to-date di dalam listener tanpa harus me-restart koneksi real-time
+  const soundOnRef = useRef(soundOn);
+  useEffect(() => {
+    soundOnRef.current = soundOn;
+  }, [soundOn]);
+
+  // Fungsi membunyikan suara notifikasi (Ting!)
+  const playNotificationSound = () => {
+    if (!soundOnRef.current) return;
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audio.play().catch(err => console.log("Browser memblokir suara otomatis. Kasir harus klik sesuatu di layar dulu:", err));
+  };
+
   const fetchOrders = useCallback(async () => {
     const { data, error } = await supabase
       .from('orders')
@@ -539,8 +537,13 @@ export default function CashierView({ onLogout, cafeId }) {
 
     const channel = supabase
       .channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        fetchOrders();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+        fetchOrders(); // Tarik data terbaru
+
+        // Bunyikan suara JIKA event-nya adalah INSERT (pesanan baru)
+        if (payload.eventType === 'INSERT') {
+          playNotificationSound();
+        }
       })
       .subscribe();
 
