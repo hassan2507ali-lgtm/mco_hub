@@ -1,19 +1,22 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient'; // <-- Import Supabase
+import { supabase } from '../supabaseClient'; 
 import HistoryView from './HistoryView';
 import { 
   MapPin, History, LogOut, Search, Utensils, 
-  Bike, ShoppingBag, Users, CreditCard, Store, Star, Clock, Gift
+  Bike, ShoppingBag, Users, CreditCard, Store, Star, Clock, Gift, X
 } from 'lucide-react';
 
 export default function HomeView({ nip, onLogout, onSelectCafe }) {
   const [cafes, setCafes] = useState([]);
+  const [vouchers, setVouchers] = useState([]); 
   const [isLoading, setIsLoading] = useState(true);
   const [activeBanner, setActiveBanner] = useState(0);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [userPoints, setUserPoints] = useState(0); // State menampung poin loyalitas
+  const [userPoints, setUserPoints] = useState(0); 
+  
+  // State baru untuk mengontrol pop-up/modal Semua Reward
+  const [isRewardModalOpen, setIsRewardModalOpen] = useState(false);
 
-  // Ambil data toko dari database Supabase
   useEffect(() => {
     const fetchCafes = async () => {
       const { data, error } = await supabase.from('cafes').select('*').order('id', { ascending: true });
@@ -23,7 +26,27 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
     fetchCafes();
   }, []);
 
-  // Hitung poin secara real berdasarkan riwayat pesanan COMPLETED milik NIP ini
+  useEffect(() => {
+    const fetchVouchers = async () => {
+      const { data } = await supabase
+        .from('menus')
+        .select('*')
+        .eq('is_voucher', true);
+      if (data) setVouchers(data);
+    };
+
+    fetchVouchers();
+
+    const channel = supabase
+      .channel('public:menus')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menus' }, () => {
+        fetchVouchers();
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
+
   useEffect(() => {
     const fetchPoints = async () => {
       const { data } = await supabase
@@ -33,16 +56,14 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
         .eq('status', 'COMPLETED');
       
       if (data) {
-        // Setiap 1 pesanan selesai bernilai 2 poin + bonus 10 poin untuk testing awal
         setUserPoints((data.length * 2) + 10);
       } else {
-        setUserPoints(10); // Nilai default 10 poin agar bisa langsung ditest claim
+        setUserPoints(10); 
       }
     };
     if (nip) fetchPoints();
   }, [nip]);
 
-  // Animasi Banner
   useEffect(() => {
     if (cafes.length === 0) return;
     const interval = setInterval(() => {
@@ -50,6 +71,26 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
     }, 2500); 
     return () => clearInterval(interval);
   }, [cafes.length]);
+
+  const handleClaimReward = (voucher) => {
+    if (userPoints < voucher.point_cost) return;
+
+    const targetCafe = cafes.find(c => c.id === voucher.cafe_id);
+    
+    if (targetCafe) {
+      onSelectCafe({
+        ...targetCafe,
+        redeemItem: {
+          ...voucher,     
+          price: 0,       
+          isRedeem: true, 
+          qty: 1
+        }
+      });
+    } else {
+      alert("Kafe penyedia voucher ini sedang tidak tersedia.");
+    }
+  };
 
   if (isHistoryOpen) {
     return <HistoryView onBack={() => setIsHistoryOpen(false)} customerNip={nip} />;
@@ -71,7 +112,7 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 overflow-y-auto antialiased">
+    <div className="min-h-screen bg-slate-50 pb-24 overflow-y-auto antialiased relative">
       
       {/* 1. BAGIAN BANNER & HEADER */}
       <div className="relative w-full h-[280px] bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 rounded-b-[2.5rem] shadow-sm overflow-hidden transition-colors duration-500">
@@ -90,7 +131,6 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
           </div>
         </div>
 
-        {/* Cek apakah cafes ada datanya sebelum render banner */}
         {cafes.length > 0 && (
           <div key={activeBanner} className="absolute inset-0 flex flex-col justify-center px-6 pt-10 text-white z-10 animate-fade-in">
             <span className="text-yellow-400 text-xs font-bold tracking-widest uppercase mb-2">Pilihan Spesial</span>
@@ -122,50 +162,64 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
         </div>
       </div>
 
-   {/* 3 FITUR BARU: MCO LOYALTY REWARDS */}
-   <div className="px-5 mt-6">
+      {/* 3. MCO LOYALTY REWARDS */}
+      <div className="px-5 mt-6">
         <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-4 text-white shadow-md shadow-orange-500/10">
           <div className="flex justify-between items-center mb-3">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-orange-100">MCO Loyalty Points</p>
               <h3 className="text-2xl font-black mt-0.5">{userPoints} POIN</h3>
             </div>
-            <div className="bg-white/20 px-3 py-1 rounded-xl text-[10px] font-bold backdrop-blur-sm border border-white/10 flex items-center gap-1">
-              <Gift className="w-3 h-3" /> Cafe Reward
-            </div>
+            {/* Tombol All Rewards */}
+            <button 
+              onClick={() => setIsRewardModalOpen(true)}
+              className="bg-white/20 hover:bg-white/30 active:scale-95 px-3 py-1.5 rounded-xl text-[10px] font-bold backdrop-blur-sm border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Gift className="w-3 h-3" /> All Rewards
+            </button>
           </div>
           
-          <div className="bg-white rounded-xl p-3 flex justify-between items-center text-slate-800 shadow-sm mt-2">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 bg-orange-50 rounded-lg flex items-center justify-center text-lg flex-shrink-0">☕</div>
-              <div className="min-w-0">
-                <p className="font-extrabold text-xs text-slate-800 truncate">Gratis 1 Kopi Americano</p>
-                <p className="text-[11px] font-bold text-orange-600 mt-0.5">Tukar 10 Poin</p>
+          <div className="flex gap-3 overflow-x-auto pb-1 snap-x [&::-webkit-scrollbar]:hidden">
+            {vouchers.length === 0 ? (
+              <div className="bg-white/20 w-full rounded-xl p-3 text-center text-xs font-bold text-orange-100 backdrop-blur-sm border border-white/10">
+                Belum ada voucher yang aktif saat ini.
               </div>
-            </div>
-            <button 
-              disabled={userPoints < 10 || cafes.length === 0}
-              onClick={() => {
-                if (cafes.length > 0) {
-                  // Menyisipkan tanda bonus claim ke dalam objek tenant/cafe yang dituju
-                  onSelectCafe({
-                    ...cafes[0], // Mengarahkan ke tenant pertama sebagai penyedia klaim kopi
-                    redeemItem: {
-                      name: "Kopi Americano",
-                      price: 0,
-                      isRedeem: true
-                    }
-                  });
-                }
-              }}
-              className={`px-3.5 py-2 rounded-lg text-xs font-black tracking-wide transition-all flex-shrink-0 ${
-                userPoints >= 10 
-                  ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm active:scale-95 cursor-pointer' 
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
-            >
-              Claim
-            </button>
+            ) : (
+              vouchers.slice(0, 3).map((voucher) => ( // Hanya tampilkan 3 maksimal di luar
+                <div key={voucher.id} className="bg-white rounded-xl p-3 flex justify-between items-center text-slate-800 shadow-sm min-w-[240px] snap-center shrink-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-9 h-9 bg-orange-50 rounded-lg flex items-center justify-center text-orange-500 flex-shrink-0">
+                      <Gift className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 pr-2">
+                      <p className="font-extrabold text-xs text-slate-800 truncate" title={voucher.name}>{voucher.name}</p>
+                      <p className="text-[11px] font-bold text-orange-600 mt-0.5">Tukar {voucher.point_cost} Poin</p>
+                    </div>
+                  </div>
+                  <button 
+                    disabled={userPoints < voucher.point_cost}
+                    onClick={() => handleClaimReward(voucher)}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-black tracking-wide transition-all flex-shrink-0 ${
+                      userPoints >= voucher.point_cost 
+                        ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm active:scale-95 cursor-pointer' 
+                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    Claim
+                  </button>
+                </div>
+              ))
+            )}
+            
+            {/* Kartu ekstra "Lihat Lainnya" kalau lebih dari 3 */}
+            {vouchers.length > 3 && (
+               <div 
+                 onClick={() => setIsRewardModalOpen(true)}
+                 className="bg-orange-400/20 hover:bg-orange-400/40 border border-orange-300/30 rounded-xl p-3 flex flex-col justify-center items-center text-white shadow-sm min-w-[100px] snap-center shrink-0 cursor-pointer transition-all active:scale-95"
+               >
+                 <span className="text-xs font-bold text-center">Lihat<br/>Lainnya</span>
+               </div>
+            )}
           </div>
         </div>
       </div>
@@ -180,8 +234,7 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
         ))}
       </div>
 
-   
-      {/* 4. DAFTAR CAFE DARI DATABASE */}
+      {/* 5. DAFTAR CAFE */}
       <div className="px-5 mt-8">
         <div className="flex justify-between items-end mb-5">
           <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Rekomendasi Tenant</h2>
@@ -216,6 +269,71 @@ export default function HomeView({ nip, onLogout, onSelectCafe }) {
           ))}
         </div>
       </div>
+
+      {/* POP-UP / MODAL SEMUA REWARDS */}
+      {isRewardModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[85vh]">
+            
+            {/* Header Modal */}
+            <div className="flex justify-between items-center p-5 border-b border-slate-100">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-2">
+                  <Gift className="w-5 h-5 text-orange-500" /> Semua Reward
+                </h3>
+                <p className="text-xs font-bold text-slate-500 mt-1">Poin kamu saat ini: <span className="text-orange-600">{userPoints} Pts</span></p>
+              </div>
+              <button 
+                onClick={() => setIsRewardModalOpen(false)} 
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            {/* Isi Daftar Voucher */}
+            <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-3 bg-slate-50">
+              {vouchers.length === 0 ? (
+                <div className="text-center py-10">
+                  <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Gift className="w-8 h-8" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-500">Belum ada reward yang tersedia.</p>
+                </div>
+              ) : (
+                vouchers.map((voucher) => (
+                  <div key={voucher.id} className="bg-white border border-slate-200 rounded-xl p-4 flex justify-between items-center shadow-sm">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center text-orange-500 flex-shrink-0">
+                        <Gift className="w-6 h-6" />
+                      </div>
+                      <div className="min-w-0 pr-2">
+                        <p className="font-extrabold text-sm text-slate-800 truncate" title={voucher.name}>{voucher.name}</p>
+                        <p className="text-xs font-bold text-orange-600 mt-1">Tukar {voucher.point_cost} Poin</p>
+                      </div>
+                    </div>
+                    <button 
+                      disabled={userPoints < voucher.point_cost}
+                      onClick={() => {
+                        setIsRewardModalOpen(false); // Tutup modal dulu
+                        handleClaimReward(voucher);  // Baru jalankan klaim
+                      }}
+                      className={`px-4 py-2.5 rounded-xl text-xs font-black tracking-wide transition-all flex-shrink-0 ${
+                        userPoints >= voucher.point_cost 
+                          ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm active:scale-95' 
+                          : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      Claim
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            
+          </div>
+        </div>
+      )}
 
     </div>
   );
