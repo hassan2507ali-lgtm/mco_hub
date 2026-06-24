@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "../supabaseClient"; // <-- Import Supabase
+import { supabase } from "../supabaseClient";
 import {
   ArrowLeft, Monitor, ClipboardList, Boxes, Clock, ChefHat,
   PackageCheck, CheckCircle2, Coffee, Volume2, VolumeX, Flame, 
-  TrendingUp, DollarSign, Receipt, Trophy, ArrowUpRight, History
+  TrendingUp, DollarSign, Receipt, Trophy, ArrowUpRight, History, Gift
 } from "lucide-react";
 
 const ETA_MINUTES = 7;
@@ -19,12 +19,12 @@ const minutesSince = (isoString) => {
 };
 
 // --- SUBS-KOMPONEN ---
-const Switch = ({ checked, onChange, disabled }) => (
+const Switch = ({ checked, onChange, disabled, colorClass = "bg-emerald-500" }) => (
   <button
     role="switch"
     disabled={disabled}
     onClick={() => onChange(!checked)}
-    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors flex-shrink-0 ${checked ? "bg-emerald-500" : "bg-slate-300"} ${disabled ? "opacity-60" : ""}`}
+    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors flex-shrink-0 ${checked ? colorClass : "bg-slate-300"} ${disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
   >
     <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-6" : "translate-x-1"}`} />
   </button>
@@ -146,12 +146,13 @@ const OrderQueueTab = ({ orders, advance, busyId }) => {
   );
 };
 
-// --- TAB STOCK MANAGEMENT ---
+// --- TAB STOCK MANAGEMENT & VOUCHER ---
 const StockTab = ({ cafeId }) => {
   const [stock, setStock] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const [busyVoucherId, setBusyVoucherId] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [newMenu, setNewMenu] = useState({ name: '', price: '', category: 'Makanan' });
+  const [newMenu, setNewMenu] = useState({ name: '', price: '', category: 'Makanan', is_voucher: false, point_cost: '' });
 
   const fetchStock = useCallback(async () => {
     const { data } = await supabase.from('menus').select('*').eq('cafe_id', cafeId).order('id', { ascending: true });
@@ -160,13 +161,33 @@ const StockTab = ({ cafeId }) => {
 
   useEffect(() => { fetchStock(); }, [fetchStock]);
 
-  const toggle = async (id, nextStatus) => {
+  // Toggle ketersediaan menu (Active/Sold Out)
+  const toggleActive = async (id, nextStatus) => {
     setBusyId(id);
     const { error } = await supabase.from('menus').update({ is_active: nextStatus }).eq('id', id);
     if (!error) {
       setStock(prev => prev.map(p => p.id === id ? { ...p, is_active: nextStatus } : p));
     }
     setBusyId(null);
+  };
+
+  // Toggle status voucher menu (ON/OFF)
+  const toggleVoucher = async (id, nextVoucherStatus) => {
+    setBusyVoucherId(id);
+    const { error } = await supabase.from('menus').update({ is_voucher: nextVoucherStatus }).eq('id', id);
+    if (!error) {
+      setStock(prev => prev.map(p => p.id === id ? { ...p, is_voucher: nextVoucherStatus } : p));
+    }
+    setBusyVoucherId(null);
+  };
+
+  // Update harga poin saat kasir selesai mengetik
+  const updatePointCost = async (id, newCost) => {
+    const cost = parseInt(newCost) || 0;
+    const { error } = await supabase.from('menus').update({ point_cost: cost }).eq('id', id);
+    if (!error) {
+      setStock(prev => prev.map(p => p.id === id ? { ...p, point_cost: cost } : p));
+    }
   };
 
   const addMenu = async (e) => {
@@ -176,28 +197,31 @@ const StockTab = ({ cafeId }) => {
       name: newMenu.name, 
       price: parseInt(newMenu.price), 
       category: newMenu.category,
-      is_active: true
+      is_active: true,
+      is_voucher: newMenu.is_voucher,
+      point_cost: parseInt(newMenu.point_cost) || 0
     }]);
     
     if (!error) {
-      setNewMenu({ name: '', price: '', category: 'Makanan' });
+      setNewMenu({ name: '', price: '', category: 'Makanan', is_voucher: false, point_cost: '' });
       setIsAdding(false);
       fetchStock();
     }
   };
 
   const activeCount = stock.filter((i) => i.is_active).length;
+  const voucherCount = stock.filter((i) => i.is_voucher).length;
 
   return (
     <div className="p-6">
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-5">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">Menu Stock Management</h2>
-          <p className="text-sm text-slate-500 mt-1">Toggle items off when sold out. Customers see them as unavailable instantly.</p>
+          <h2 className="text-xl font-semibold text-slate-900">Menu Stock & Voucher Management</h2>
+          <p className="text-sm text-slate-500 mt-1">Atur ketersediaan menu dan tentukan menu mana yang bisa diklaim menggunakan poin pelanggan.</p>
         </div>
         <div className="flex gap-2 items-center">
+          <span className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-semibold border border-blue-100 flex items-center gap-1"><Gift className="w-3.5 h-3.5"/> {voucherCount} Vouchers</span>
           <span className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-semibold border border-emerald-100">{activeCount} Active</span>
-          <span className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm font-semibold border border-red-100">{stock.length - activeCount} Sold Out</span>
           <button 
             onClick={() => setIsAdding(!isAdding)}
             className="ml-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition hover:bg-slate-800"
@@ -209,14 +233,21 @@ const StockTab = ({ cafeId }) => {
 
       {isAdding && (
         <form onSubmit={addMenu} className="bg-white p-4 rounded-xl border border-slate-200 mb-6 shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input required placeholder="Nama Menu" className="border border-slate-200 p-2.5 rounded-lg text-sm focus:outline-none focus:border-slate-400" value={newMenu.name} onChange={e => setNewMenu({...newMenu, name: e.target.value})} />
-            <input required type="number" placeholder="Harga" className="border border-slate-200 p-2.5 rounded-lg text-sm focus:outline-none focus:border-slate-400" value={newMenu.price} onChange={e => setNewMenu({...newMenu, price: e.target.value})} />
+            <input required type="number" placeholder="Harga (Rp)" className="border border-slate-200 p-2.5 rounded-lg text-sm focus:outline-none focus:border-slate-400" value={newMenu.price} onChange={e => setNewMenu({...newMenu, price: e.target.value})} />
             <select className="border border-slate-200 p-2.5 rounded-lg text-sm focus:outline-none focus:border-slate-400" value={newMenu.category} onChange={e => setNewMenu({...newMenu, category: e.target.value})}>
               <option value="Makanan">Makanan</option>
               <option value="Minuman">Minuman</option>
               <option value="Snack">Snack</option>
             </select>
+            <div className="flex items-center gap-3 border border-slate-200 p-2.5 rounded-lg bg-slate-50">
+               <label className="text-sm font-medium text-slate-700 flex-1">Jadikan Voucher?</label>
+               <Switch checked={newMenu.is_voucher} onChange={(v) => setNewMenu({...newMenu, is_voucher: v})} colorClass="bg-blue-500" />
+            </div>
+            {newMenu.is_voucher && (
+              <input required type="number" placeholder="Harga Poin (cth: 10)" className="border border-blue-200 bg-blue-50 p-2.5 rounded-lg text-sm focus:outline-none focus:border-blue-400 col-span-full md:col-span-1 md:col-start-4" value={newMenu.point_cost} onChange={e => setNewMenu({...newMenu, point_cost: e.target.value})} />
+            )}
           </div>
           <button type="submit" className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold text-sm transition-colors">
             Simpan Menu
@@ -224,16 +255,59 @@ const StockTab = ({ cafeId }) => {
         </form>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {stock.map((it) => (
-          <div key={it.id} className={`flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm transition-all ${it.is_active ? "border-slate-200" : "border-red-200 bg-red-50/30"}`}>
+          <div key={it.id} className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border rounded-xl shadow-sm transition-all ${it.is_active ? "border-slate-200" : "border-red-200 bg-red-50/30"} gap-4`}>
+            
             <div className="flex-1 min-w-0 pr-3">
-              <p className="font-semibold text-slate-900 text-sm truncate">{it.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-slate-900 text-sm truncate">{it.name}</p>
+                {it.is_voucher && <Gift className="w-3.5 h-3.5 text-blue-500" />}
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">{formatRp(it.price)}</p>
             </div>
-            <div className="flex flex-col items-end gap-1">
-              <Switch checked={it.is_active} onChange={(v) => toggle(it.id, v)} disabled={busyId === it.id} />
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${it.is_active ? "text-emerald-600" : "text-red-500"}`}>{it.is_active ? "Active" : "Sold Out"}</span>
+            
+            <div className="flex items-center gap-4 sm:gap-6 self-end sm:self-auto">
+              
+              {/* VOUCHER CONTROLS */}
+              <div className="flex flex-col items-center gap-1 border-r border-slate-200 pr-4 sm:pr-6">
+                <div className="flex items-center gap-2 h-7">
+                  <Switch 
+                    checked={it.is_voucher} 
+                    onChange={(v) => toggleVoucher(it.id, v)} 
+                    disabled={busyVoucherId === it.id} 
+                    colorClass="bg-blue-500" 
+                  />
+                  {it.is_voucher && (
+                    <input 
+                      type="number" 
+                      placeholder="Pts"
+                      defaultValue={it.point_cost}
+                      onBlur={(e) => updatePointCost(it.id, e.target.value)}
+                      className="w-14 px-1.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded text-center focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                      title="Ubah harga poin lalu klik di luar kotak untuk menyimpan"
+                    />
+                  )}
+                </div>
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${it.is_voucher ? "text-blue-600" : "text-slate-400"}`}>
+                  {it.is_voucher ? "Voucher ON" : "Voucher OFF"}
+                </span>
+              </div>
+
+              {/* ACTIVE CONTROLS */}
+              <div className="flex flex-col items-center gap-1 min-w-[60px]">
+                <div className="h-7 flex items-center">
+                  <Switch 
+                    checked={it.is_active} 
+                    onChange={(v) => toggleActive(it.id, v)} 
+                    disabled={busyId === it.id} 
+                  />
+                </div>
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${it.is_active ? "text-emerald-600" : "text-red-500"}`}>
+                  {it.is_active ? "Active" : "Sold Out"}
+                </span>
+              </div>
+              
             </div>
           </div>
         ))}
@@ -363,7 +437,7 @@ const ReportTab = ({ cafeId }) => {
   );
 };
 
-// --- TAB HISTORY (BARU) ---
+// --- TAB HISTORY ---
 const HistoryTab = ({ cafeId }) => {
   const [history, setHistory] = useState([]);
 
@@ -374,7 +448,7 @@ const HistoryTab = ({ cafeId }) => {
         .select('*, order_items(*)')
         .eq('cafe_id', cafeId)
         .eq('status', 'COMPLETED')
-        .order('created_at', { ascending: false }); // Urutkan dari yang terbaru
+        .order('created_at', { ascending: false }); 
       
       if (data) setHistory(data);
     };
@@ -440,19 +514,17 @@ export default function CashierView({ onLogout, cafeId }) {
   const [soundOn, setSoundOn] = useState(true);
   const [_tick, setTick] = useState(0);
 
-  // Fungsi untuk memuat pesanan milik cafe ini
   const fetchOrders = useCallback(async () => {
     const { data, error } = await supabase
       .from('orders')
       .select('*, order_items(*)')
       .eq('cafe_id', cafeId)
-      .neq('status', 'COMPLETED') // Sembunyikan yang sudah selesai dari kanban
+      .neq('status', 'COMPLETED') 
       .order('created_at', { ascending: true });
 
     if (data) setOrders(data);
   }, [cafeId]);
 
-  // Tombol aksi mindahin status pesanan di database
   const advanceOrder = async (id, nextStatus) => {
     setBusyId(id);
     const { error } = await supabase.from('orders').update({ status: nextStatus }).eq('id', id);
@@ -465,7 +537,6 @@ export default function CashierView({ onLogout, cafeId }) {
   useEffect(() => {
     fetchOrders();
 
-    // Fitur Live Real-time Real: Ikut dengerin perubahan tabel 'orders' di Supabase
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
@@ -479,7 +550,7 @@ export default function CashierView({ onLogout, cafeId }) {
   }, [fetchOrders]);
 
   useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 10000); // refresh label durasi waktu
+    const t = setInterval(() => setTick((x) => x + 1), 10000); 
     return () => clearInterval(t);
   }, []);
 
